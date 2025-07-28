@@ -14,13 +14,28 @@ An intelligent trading system implementing SMC (Smart Money Concepts) and ICT (I
 
 ## Installation
 ```bash
-pip install -r requirements.txt
+npm install
 ```
 
 ## Configuration
-Update `config.yaml` with your trading preferences and API keys.
+Create a `.env` file with your configuration:
+```env
+BINANCE_API_KEY=your_api_key
+BINANCE_API_SECRET=your_api_secret
+```
 
 ## Usage
+Development:
 ```bash
-python src/main.py
+npm run dev
+```
+
+Production:
+```bash
+npm start
+```
+
+## Testing
+```bash
+npm test
 ```

@@ -217,27 +217,41 @@ class SignalGenerator {
       console.log(`\nMarket Structure: ${smcStructure.trend}`);
       
       if (signals.length > 0) {
-        console.log('\n? Trading Signals:');
+        console.log('\n=== TRADING SIGNALS DETECTED ===');
         signals.forEach(signal => {
           const riskUsd = Math.abs(signal.price - signal.stopLoss);
-          console.log(`\n${signal.direction === 'long' ? '?' : '?'} ${signal.type} ${signal.direction.toUpperCase()}`);
-          console.log(`Entry Price: ${signal.price}`);
-          console.log(`Stop Loss: ${signal.stopLoss} (${((Math.abs(signal.price - signal.stopLoss) / signal.price) * 100).toFixed(2)}%)`);
-          console.log(`Targets:`);
+          console.log(`\n${signal.direction === 'long' ? '?' : '?'} ${signal.type} ${signal.direction.toUpperCase()} SIGNAL`);
+          console.log('\n? ENTRY POINTS:');
+          console.log(`  Market Entry: ${signal.price}`);
+          console.log(`  Limit Entry: ${(signal.price * 0.998).toFixed(2)} - ${signal.price}`);
+          
+          console.log('\n? STOPLOSS:');
+          console.log(`  Price: ${signal.stopLoss}`);
+          console.log(`  Risk: ${((Math.abs(signal.price - signal.stopLoss) / signal.price) * 100).toFixed(2)}%`);
+          
+          console.log('\n? TARGETS:');
           signal.targets.forEach((target, i) => {
             const profit = signal.direction === 'long' ? target - signal.price : signal.price - target;
             const profitPercent = (profit / signal.price * 100).toFixed(2);
             console.log(`  ${i + 1}. ${target} (${profitPercent}%)`);
           });
-          console.log(`Position Size: ${signal.volume} ${this.symbol.replace('USDT', '')}`);
-          console.log(`Leverage: ${signal.leverage}x`);
-          console.log(`Risk/Reward: ${signal.riskRewardRatio}`);
-          console.log(`Win Rate: ${signal.winRate}%`);
-          console.log(`Confidence: ${signal.confidence}%`);
-          console.log('------------------------');
+
+          console.log('\n? TRADE INFO:');
+          console.log(`  Position Size: ${signal.volume} ${this.symbol.replace('USDT', '')}`);
+          console.log(`  Leverage: ${signal.leverage}x`);
+          console.log(`  Risk/Reward: ${signal.riskRewardRatio}`);
+          console.log(`  Win Rate: ${signal.winRate}%`);
+          console.log(`  Signal Confidence: ${signal.confidence}%`);
+          console.log('\n' + '='.repeat(40));
         });
       } else {
-        console.log('\nNo trading signals at this time');
+        console.log('\n? NO TRADING SIGNALS AT THIS TIME');
+        console.log('? Currently analyzing market conditions for:');
+        console.log('  - Potential entry points');
+        console.log('  - Support/Resistance levels');
+        console.log('  - Market structure shifts');
+        console.log('  - Order blocks & liquidity zones');
+        console.log('\nPlease wait for high-probability setups to form...');
       }
       
       if (fvgs.length > 0) {

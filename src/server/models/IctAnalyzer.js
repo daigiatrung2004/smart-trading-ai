@@ -150,7 +150,7 @@ class IctAnalyzer {
 		const orderBlocks = [];
 		for (let i = 3; i < data.length; i++) {
 			const candles = data.slice(i - 3, i + 1);
-			
+
 			// Look for reversal patterns
 			if (this._isReversalPattern(candles)) {
 				orderBlocks.push({
@@ -289,16 +289,16 @@ class IctAnalyzer {
 		const [c1, c2, c3, c4] = candles;
 		
 		// Bullish reversal
-		if (c1.close < c1.open && // First candle bearish
-				c4.close > c4.open && // Last candle bullish
-				c4.close > c1.close) { // Price increased
+		if (c1.close < c1.open && // First candle bearish (giam)
+				c4.close > c4.open && // Last candle bullish (tang)
+				c4.close > c1.close) { // Price increased (tang)
 			return true;
 		}
 		
 		// Bearish reversal
-		if (c1.close > c1.open && // First candle bullish
-				c4.close < c4.open && // Last candle bearish
-				c4.close < c1.close) { // Price decreased
+		if (c1.close > c1.open && // First candle bullish (tang)
+				c4.close < c4.open && // Last candle bearish (giam)
+				c4.close < c1.close) { // Price decreased (giam)
 			return true;
 		}
 		

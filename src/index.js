@@ -1,4 +1,4 @@
-const SignalGenerator = require('./trading/SignalGenerator');
+const SignalGenerator = require('./server/trading/SignalGenerator');
 
 class TradingSystem {
   constructor() {
@@ -7,16 +7,13 @@ class TradingSystem {
 
   async start() {
     try {
-      console.log('Starting Smart Trading AI System...');
-      // Initialize system components
-      // Connect to exchange
-      // Start market data stream
-      // Begin signal generation
+      await this.signalGenerator.init();
     } catch (error) {
       console.error('Error starting system:', error);
     }
   }
 }
 
+// Start the trading system
 const tradingSystem = new TradingSystem();
 tradingSystem.start();

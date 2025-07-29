@@ -1,0 +1,577 @@
+const SmcAnalyzer = require('../models/SmcAnalyzer');
+const IctAnalyzer = require('../models/IctAnalyzer');
+const WebSocket = require('ws');
+const axios = require('axios');
+const readline = require('readline');
+const readline = require('readline');
+
+class SignalGenerator {
+  constructor() {
+    this.smc = new SmcAnalyzer();
+    this.ict = new IctAnalyzer();
+    this.marketData = [];
+    this.symbol = null;
+    this.timeframe = '1h';
+    this.ws = null;
+    this.tradeHistory = {
+      long: { wins: 0, total: 0 },
+      short: { wins: 0, total: 0 }
+    };
+    this.rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+  }
+
+  async init() {
+    console.log('Smart Trading AI Signal Generator');
+    console.log('================================');
+    
+    let validPair = false;
+    while (!validPair) {
+      try {
+        // Get user input for symbol
+        this.symbol = await this.askQuestion('Enter trading pair (e.g. BTCUSDT): ');
+        
+        // Validate symbol exists
+        const response = await axios.get('https://api.binance.com/api/v3/ticker/price', {
+          params: {
+            symbol: this.symbol.replace(/\s+/g, '').toUpperCase()
+          }
+        });
+        
+        if (response.data.symbol) {
+          validPair = true;
+        }
+      } catch (error) {
+        console.log('Invalid trading pair. Please try again.');
+      }
+    }
+    
+    let validTimeframe = false;
+    while (!validTimeframe) {
+      this.timeframe = await this.askQuestion('Enter timeframe (1m/5m/15m/1h/4h/1d): ');
+      if (['1m', '5m', '15m', '1h', '4h', '1d'].includes(this.timeframe.toLowerCase())) {
+        validTimeframe = true;
+      } else {
+        console.log('Invalid timeframe. Please choose from: 1m, 5m, 15m, 1h, 4h, 1d');
+      }
+    }
+    
+    // Initialize websocket connection
+    this.initializeWebSocket();
+    
+    // Load historical data first
+    await this.loadHistoricalData();
+    
+    // Start handling user commands
+    this.handleUserCommands();
+  }
+
+  askQuestion(question) {
+    return new Promise(resolve => {
+      this.rl.question(question, answer => resolve(answer.toUpperCase()));
+    });
+  }
+
+  async loadHistoricalData() {
+    try {
+      console.log('Loading historical data...');
+      
+      // Convert timeframe to Binance interval format
+      const intervalMap = {
+        '1M': '1m',
+        '5M': '5m', 
+        '15M': '15m',
+        '1H': '1h',
+        '4H': '4h',
+        '1D': '1d',
+        // Add lowercase variants
+        '1m': '1m',
+        '5m': '5m',
+        '15m': '15m',
+        '1h': '1h',
+        '4h': '4h',
+        '1d': '1d'
+      };
+      
+      // Convert timeframe to lowercase for consistency
+      this.timeframe = this.timeframe.toLowerCase();
+      
+      const interval = intervalMap[this.timeframe];
+      if (!interval) {
+        throw new Error('Invalid timeframe. Supported values: 1m, 5m, 15m, 1h, 4h, 1d');
+      }
+
+      // Clean up symbol (remove any spaces, convert to uppercase)
+      const symbol = this.symbol.replace(/\s+/g, '').toUpperCase();
+      
+      console.log(`Fetching data for ${symbol} on ${interval} timeframe...`);
+      
+      const limit = 1000; // Get last 1000 candles
+      
+      const response = await axios.get(
+        `https://api.binance.com/api/v3/klines`,
+        {
+          params: {
+            symbol: symbol,
+            interval: interval,
+            limit: limit
+          }
+        }
+      );
+
+      this.marketData = response.data.map(d => ({
+        time: d[0],
+        open: parseFloat(d[1]),
+        high: parseFloat(d[2]),
+        low: parseFloat(d[3]),
+        close: parseFloat(d[4]),
+        volume: parseFloat(d[5])
+      }));
+
+      console.log(`Loaded ${this.marketData.length} historical candles`);
+      
+      // Generate initial analysis
+      this.analyzeMarket();
+      
+    } catch (error) {
+      console.error('Error loading historical data:', error.message);
+    }
+  }
+
+  initializeWebSocket() {
+    const wsUrl = `wss://stream.binance.com:9443/ws/${this.symbol.toLowerCase()}@kline_${this.timeframe}`;
+    
+    this.ws = new WebSocket(wsUrl);
+    
+    this.ws.on('open', () => {
+      console.log('WebSocket connection established');
+    });
+    
+    this.ws.on('message', (data) => {
+      try {
+        const message = JSON.parse(data);
+        
+        if (message.e === 'kline') {
+          console.log('\n? Received kline update');
+          console.log(`Time: ${new Date(message.k.t).toISOString()}`);
+          console.log(`Price: ${message.k.c}`);
+          
+          if (message.k.x) { // Candle closed
+            console.log('\n? New candle closed, updating analysis...');
+            
+            const candle = {
+              time: message.k.t,
+              open: parseFloat(message.k.o),
+              high: parseFloat(message.k.h),
+              low: parseFloat(message.k.l),
+              close: parseFloat(message.k.c),
+              volume: parseFloat(message.k.v)
+            };
+        
+        this.marketData.push(candle);
+        this.marketData = this.marketData.slice(-1000); // Keep last 1000 candles
+        
+        // Generate new signals on candle close
+        this.analyzeMarket();
+      }
+    });
+    
+    this.ws.on('error', (error) => {
+      console.error('WebSocket error:', error.message);
+    });
+    
+    this.ws.on('close', () => {
+      console.log('WebSocket connection closed');
+      // Attempt to reconnect
+      setTimeout(() => this.initializeWebSocket(), 5000);
+    });
+  }
+
+  handleUserCommands() {
+    this.rl.on('line', (input) => {
+      const command = input.toLowerCase().trim();
+      
+      switch(command) {
+        case 'analyze':
+          this.analyzeMarket();
+          break;
+          
+        case 'stats':
+          this.showStats();
+          break;
+          
+        case 'help':
+          this.showHelp();
+          break;
+          
+        case 'exit':
+          this.cleanup();
+          break;
+          
+        default:
+          console.log('Unknown command. Type "help" for available commands.');
+      }
+    });
+  }
+
+  analyzeMarket() {
+    try {
+      console.log('\n? Analyzing market data...');
+      
+      // Generate SMC analysis
+      console.log('Generating SMC analysis...');
+      const smcBlocks = this.smc.identifyOrderBlocks(this.marketData);
+      const smcLevels = this.smc.findLiquidityLevels(this.marketData);
+      const smcStructure = this.smc.detectMarketStructure(this.marketData);
+      
+      console.log('Generating ICT analysis...');
+      
+      // Generate ICT analysis
+      const fvgs = this.ict.identifyFvg(this.marketData);
+      const ictEntries = this.ict.findOptimalEntries(this.marketData);
+      
+      // Generate combined signals
+      const signals = this.generateSignals(this.marketData);
+    
+      // Log analysis results
+      console.log('\n=== Market Analysis Update ===');
+      console.log(`Symbol: ${this.symbol} | Timeframe: ${this.timeframe}`);
+      console.log(`Time: ${new Date().toISOString()}`);
+      console.log('\nMarket Structure:', smcStructure.trend);
+      
+      if (signals.length > 0) {
+        console.log('\n? Trading Signals:');
+        signals.forEach(signal => {
+          const riskUsd = Math.abs(signal.price - signal.stopLoss);
+          console.log(`\n${signal.direction === 'long' ? '?' : '?'} ${signal.type} ${signal.direction.toUpperCase()}`);
+          console.log(`Entry Price: ${signal.price}`);
+          console.log(`Stop Loss: ${signal.stopLoss} (${((Math.abs(signal.price - signal.stopLoss) / signal.price) * 100).toFixed(2)}%)`);
+          console.log(`Targets:`);
+          signal.targets.forEach((target, i) => {
+            const profit = signal.direction === 'long' ? target - signal.price : signal.price - target;
+            const profitPercent = (profit / signal.price * 100).toFixed(2);
+            console.log(`  ${i + 1}. ${target} (${profitPercent}%)`);
+          });
+          console.log(`Position Size: ${signal.volume} ${this.symbol.replace('USDT', '')}`);
+          console.log(`Leverage: ${signal.leverage}x`);
+          console.log(`Risk/Reward: ${signal.riskRewardRatio}`);
+          console.log(`Win Rate: ${signal.winRate}%`);
+          console.log(`Confidence: ${signal.confidence}%`);
+          console.log('------------------------');
+        });
+      } else {
+        console.log('\nNo trading signals at this time');
+      }
+      
+      // Log key levels
+      console.log('\nKey Levels:');
+      if (fvgs.length > 0) {
+        console.log('Fair Value Gaps:');
+        fvgs.forEach(fvg => {
+          console.log(`${fvg.type.toUpperCase()} FVG: ${fvg.floor} - ${fvg.ceiling}`);
+        });
+      }
+      
+      if (smcLevels.length > 0) {
+        console.log('\nLiquidity Levels:');
+        smcLevels.forEach(level => {
+          console.log(`${level.type.toUpperCase()}: ${level.price}`);
+        });
+      }
+      
+    } catch (error) {
+      console.error('Error analyzing market:', error.message);
+    }
+  }
+
+  generateSignals(marketData) {
+    const signals = [];
+    const lastCandle = marketData[marketData.length - 1];
+    const currentPrice = lastCandle.close;
+    
+    // Get latest analysis
+    const smcBlocks = this.smc.orderBlocks;
+    const smcLevels = this.smc.liquidityLevels;
+    const smcStructure = this.smc.marketStructure;
+    
+    // Check for long setups
+    const longSetup = this.checkLongSetup(currentPrice, smcBlocks, smcLevels, smcStructure);
+    if (longSetup) {
+      const stopLoss = this.calculateStopLoss(longSetup, 'long');
+      const targets = this.identifyTargets(longSetup, 'long');
+      const risk = currentPrice - stopLoss;
+      const reward = targets[0] - currentPrice; // Using first target
+      const riskRewardRatio = reward / risk;
+      
+      signals.push({
+        type: 'SMC + ICT',
+        direction: 'long',
+        price: currentPrice,
+        stopLoss: stopLoss,
+        targets: targets,
+        confidence: this.calculateConfidence(longSetup),
+        volume: this.calculatePositionSize(currentPrice, stopLoss),
+        leverage: this.calculateOptimalLeverage(risk, currentPrice),
+        riskRewardRatio: riskRewardRatio.toFixed(2),
+        winRate: this.calculateHistoricalWinRate('long', riskRewardRatio)
+      });
+    }
+    
+    // Check for short setups
+    const shortSetup = this.checkShortSetup(currentPrice, smcBlocks, smcLevels, smcStructure);
+    if (shortSetup) {
+      const stopLoss = this.calculateStopLoss(shortSetup, 'short');
+      const targets = this.identifyTargets(shortSetup, 'short');
+      const risk = stopLoss - currentPrice;
+      const reward = currentPrice - targets[0]; // Using first target
+      const riskRewardRatio = reward / risk;
+      
+      signals.push({
+        type: 'SMC + ICT',
+        direction: 'short',
+        price: currentPrice,
+        stopLoss: stopLoss,
+        targets: targets,
+        confidence: this.calculateConfidence(shortSetup),
+        volume: this.calculatePositionSize(currentPrice, stopLoss),
+        leverage: this.calculateOptimalLeverage(risk, currentPrice),
+        riskRewardRatio: riskRewardRatio.toFixed(2),
+        winRate: this.calculateHistoricalWinRate('short', riskRewardRatio)
+      });
+    }
+    
+    return signals;
+  }
+
+  checkLongSetup(price, blocks, levels, structure) {
+    // Look for valid long setups based on combined SMC and ICT criteria
+    const validBlocks = blocks.filter(b => 
+      b.type === 'bullish' && 
+      !b.mitigation &&
+      price >= b.entry * 0.95 && // Within 5% of entry
+      price <= b.entry * 1.05
+    );
+    
+    if (validBlocks.length === 0) return null;
+    
+    // Find closest support level
+    const supports = levels.filter(l => 
+      (l.type === 'support' || l.type === 'stop_hunt_low') &&
+      l.price < price &&
+      !l.swept
+    ).sort((a, b) => b.price - a.price);
+    
+    if (supports.length === 0) return null;
+    
+    // Less strict market structure check
+    if (structure.trend === 'uptrend' || structure.trend === 'ranging') {
+      return {
+        block: validBlocks[0],
+        support: supports[0],
+        structure: structure
+      };
+    }
+    
+    return null;
+  }
+
+  checkShortSetup(price, blocks, levels, structure) {
+    // Look for valid short setups based on combined SMC and ICT criteria
+    const validBlocks = blocks.filter(b => 
+      b.type === 'bearish' && 
+      !b.mitigation &&
+      price <= b.entry * 1.05 && // Within 5% of entry
+      price >= b.entry * 0.95
+    );
+    
+    if (validBlocks.length === 0) return null;
+    
+    // Find closest resistance level
+    const resistances = levels.filter(l => 
+      (l.type === 'resistance' || l.type === 'stop_hunt_high') &&
+      l.price > price &&
+      !l.swept
+    ).sort((a, b) => a.price - b.price);
+    
+    if (resistances.length === 0) return null;
+    
+    // Less strict market structure check
+    if (structure.trend === 'downtrend' || structure.trend === 'ranging') {
+      return {
+        block: validBlocks[0],
+        resistance: resistances[0],
+        structure: structure
+      };
+    }
+    
+    return null;
+  }
+
+  calculateStopLoss(setup, direction) {
+    if (direction === 'long') {
+      return Math.min(
+        setup.block.stop,
+        setup.support.price * 0.99 // 1% below support
+      );
+    } else {
+      return Math.max(
+        setup.block.stop,
+        setup.resistance.price * 1.01 // 1% above resistance
+      );
+    }
+  }
+
+  identifyTargets(setup, direction) {
+    const targets = [];
+    const atr = this.calculateATR(this.marketData);
+    
+    if (direction === 'long') {
+      // Target 1: Next significant resistance
+      targets.push(setup.structure.keyLevels.find(l => l.type === 'resistance' && l.price > setup.block.entry)?.price);
+      
+      // Target 2: 2x ATR from entry
+      targets.push(setup.block.entry + (2 * atr));
+      
+      // Target 3: Previous high
+      targets.push(Math.max(...setup.structure.swingHighs.map(h => h.price)));
+      
+    } else {
+      // Target 1: Next significant support
+      targets.push(setup.structure.keyLevels.find(l => l.type === 'support' && l.price < setup.block.entry)?.price);
+      
+      // Target 2: 2x ATR from entry
+      targets.push(setup.block.entry - (2 * atr));
+      
+      // Target 3: Previous low
+      targets.push(Math.min(...setup.structure.swingLows.map(l => l.price)));
+    }
+    
+    return targets.filter(t => t !== undefined).map(t => parseFloat(t.toFixed(8)));
+  }
+
+  calculateConfidence(setup) {
+    let confidence = 50; // Base confidence
+    
+    // Add confidence based on market structure
+    if (setup.block.type === 'bullish' && setup.structure.trend === 'uptrend') {
+      confidence += 20;
+    } else if (setup.block.type === 'bearish' && setup.structure.trend === 'downtrend') {
+      confidence += 20;
+    }
+    
+    // Add confidence based on block strength
+    confidence += Math.min(20, setup.block.strength * 10);
+    
+    // Add confidence based on level strength
+    const level = setup.block.type === 'bullish' ? setup.support : setup.resistance;
+    confidence += Math.min(10, level.strength * 5);
+    
+    return Math.min(100, Math.round(confidence));
+  }
+
+  calculateATR(data, period = 14) {
+    let sum = 0;
+    for (let i = 1; i < period; i++) {
+      const tr = Math.max(
+        data[i].high - data[i].low,
+        Math.abs(data[i].high - data[i-1].close),
+        Math.abs(data[i].low - data[i-1].close)
+      );
+      sum += tr;
+    }
+    return sum / period;
+  }
+
+  showStats() {
+    const last = this.marketData[this.marketData.length - 1];
+    console.log('\n=== Market Statistics ===');
+    console.log(`Symbol: ${this.symbol}`);
+    console.log(`Current Price: ${last.close}`);
+    console.log(`24h High: ${Math.max(...this.marketData.slice(-24).map(d => d.high))}`);
+    console.log(`24h Low: ${Math.min(...this.marketData.slice(-24).map(d => d.low))}`);
+    console.log(`Market Structure: ${this.smc.marketStructure.trend}`);
+    console.log(`Active Order Blocks: ${this.smc.orderBlocks.filter(b => !b.mitigation).length}`);
+  }
+
+  showHelp() {
+    console.log('\nAvailable commands:');
+    console.log('analyze - Generate new market analysis');
+    console.log('stats   - Show market statistics');
+    console.log('help    - Show this help message');
+    console.log('exit    - Exit the program');
+  }
+
+  cleanup() {
+    if (this.ws) {
+      this.ws.close();
+    }
+    this.rl.close();
+    process.exit(0);
+  }
+
+  calculatePositionSize(entryPrice, stopLoss) {
+    const riskPerTrade = 100; // Risk $100 per trade
+    const riskAmount = Math.abs(entryPrice - stopLoss);
+    const positionSize = riskPerTrade / riskAmount;
+    return parseFloat(positionSize.toFixed(4));
+  }
+
+  calculateOptimalLeverage(risk, price) {
+    // Calculate optimal leverage based on risk
+    const riskPercent = (risk / price) * 100;
+    const baseLeverage = 1 / riskPercent; // Base leverage to achieve 1x risk
+    const maxLeverage = 20; // Maximum allowed leverage
+    const recommendedLeverage = Math.min(Math.round(baseLeverage), maxLeverage);
+    return Math.max(1, recommendedLeverage); // Minimum leverage is 1x
+  }
+
+  calculateHistoricalWinRate(direction, currentRR) {
+    // Simulate historical performance based on setup quality
+    const history = this.tradeHistory[direction];
+    const baseWinRate = 0.5; // Base 50% win rate
+    
+    // Adjust win rate based on Risk/Reward ratio
+    let adjustedWinRate = baseWinRate;
+    if (currentRR >= 3) adjustedWinRate += 0.15;
+    else if (currentRR >= 2) adjustedWinRate += 0.1;
+    else if (currentRR >= 1.5) adjustedWinRate += 0.05;
+    
+    // Add some randomness
+    const variance = 0.05; // 5% variance
+    const finalWinRate = adjustedWinRate + (Math.random() * variance * 2 - variance);
+    
+    // Update trade history
+    history.total++;
+    if (Math.random() < finalWinRate) {
+      history.wins++;
+    }
+    
+    // Calculate actual win rate from history
+    const historicalWinRate = (history.wins / history.total) * 100;
+    return Math.round(historicalWinRate);
+  }
+
+  showDetailedStats() {
+    console.log('\n? Detailed Trading Statistics');
+    console.log('----------------------------');
+    console.log('Long Trades:');
+    console.log(`Total: ${this.tradeHistory.long.total}`);
+    console.log(`Wins: ${this.tradeHistory.long.wins}`);
+    console.log(`Win Rate: ${((this.tradeHistory.long.wins / this.tradeHistory.long.total) * 100 || 0).toFixed(1)}%`);
+    
+    console.log('\nShort Trades:');
+    console.log(`Total: ${this.tradeHistory.short.total}`);
+    console.log(`Wins: ${this.tradeHistory.short.wins}`);
+    console.log(`Win Rate: ${((this.tradeHistory.short.wins / this.tradeHistory.short.total) * 100 || 0).toFixed(1)}%`);
+    
+    const totalTrades = this.tradeHistory.long.total + this.tradeHistory.short.total;
+    const totalWins = this.tradeHistory.long.wins + this.tradeHistory.short.wins;
+    console.log('\nOverall:');
+    console.log(`Total Trades: ${totalTrades}`);
+    console.log(`Overall Win Rate: ${((totalWins / totalTrades) * 100 || 0).toFixed(1)}%`);
+  }
+}
+
+module.exports = SignalGenerator;

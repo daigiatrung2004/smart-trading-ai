@@ -1,17 +1,18 @@
 const SignalGenerator = require('./server/trading/SignalGenerator');
+const path = require('path');
 
 class TradingSystem {
-  constructor() {
-    this.signalGenerator = new SignalGenerator();
-  }
+	constructor() {
+		this.signalGenerator = new SignalGenerator();
+	}
 
-  async start() {
-    try {
-      await this.signalGenerator.init();
-    } catch (error) {
-      console.error('Error starting system:', error);
-    }
-  }
+	async start() {
+		try {
+			await this.signalGenerator.init();
+		} catch (error) {
+			console.error('Error starting system:', error);
+		}
+	}
 }
 
 // Start the trading system

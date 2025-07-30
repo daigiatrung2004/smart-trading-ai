@@ -1,41 +1,78 @@
 # Smart Trading AI
 
-An intelligent trading system implementing SMC (Smart Money Concepts) and ICT (Inner Circle Trader) methodologies using AI for signal generation, stop-loss, and target identification.
+A real-time cryptocurrency trading platform with AI-powered signals and analytics.
 
 ## Features
-- AI-powered market structure analysis
-- Smart Money Concepts (SMC) pattern recognition
-- ICT concepts implementation
-- Automated signal generation
-- Dynamic stop-loss calculation
-- Multiple target identification
-- Real-time market analysis
-- Risk management system
 
-## Installation
+-   Real-time cryptocurrency price tracking
+-   Technical analysis indicators
+-   AI-powered trading signals
+-   WebSocket-based live updates
+-   Dark mode support
+-   Responsive design
+-   Interactive charts
+
+## Tech Stack
+
+-   Frontend:
+
+    -   React
+    -   Tailwind CSS
+    -   Lightweight Charts
+    -   WebSocket client
+
+-   Backend:
+    -   Node.js
+    -   WebSocket server
+    -   Trading algorithms
+    -   Technical analysis tools
+
+## Getting Started
+
+### Prerequisites
+
+-   Node.js >= 14.x
+-   npm >= 6.x
+
+### Installation
+
+1. Clone the repository:
+
+```bash
+git clone https://github.com/daigiatrung2004/smart-trading-ai.git
+cd smart-trading-ai
+```
+
+2. Install server dependencies:
+
 ```bash
 npm install
 ```
 
-## Configuration
-Create a `.env` file with your configuration:
-```env
-BINANCE_API_KEY=your_api_key
-BINANCE_API_SECRET=your_api_secret
+3. Install client dependencies:
+
+```bash
+cd client
+npm install
 ```
 
-## Usage
-Development:
+4. Start the development server:
+
 ```bash
+# In the root directory
 npm run dev
-```
 
-Production:
-```bash
+# In a separate terminal, start the client
+cd client
 npm start
 ```
 
-## Testing
-```bash
-npm test
-```
+## Development
+
+-   Server runs on port 4000
+-   Client runs on port 3000
+-   WebSocket connections are automatically managed
+
+## License
+
+MIT

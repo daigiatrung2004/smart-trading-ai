@@ -1,57 +1,89 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createChart } from 'lightweight-charts';
 
-class TradingView extends React.Component {
-    chartRef = React.createRef();
-    
-    componentDidMount() {
-        const chart = createChart(this.chartRef.current, {
-            width: 800,
-            height: 400,
-            layout: {
-                backgroundColor: '#253248',
-                textColor: 'rgba(255, 255, 255, 0.9)',
-            },
-            grid: {
-                vertLines: {
-                    color: 'rgba(197, 203, 206, 0.5)',
-                },
-                horzLines: {
-                    color: 'rgba(197, 203, 206, 0.5)',
-                },
-            },
-            priceScale: {
-                borderColor: 'rgba(197, 203, 206, 0.8)',
-            },
-            timeScale: {
-                borderColor: 'rgba(197, 203, 206, 0.8)',
-            },
-        });
+const TradingView = ({ data = [], pair = 'BTC/USDT' }) => {
+	const chartRef = useRef();
+	const chartInstance = useRef(null);
 
-        const candlestickSeries = chart.addCandlestickSeries({
-            upColor: '#4CAF50',
-            downColor: '#FF5252',
-            borderDownColor: '#FF5252',
-            borderUpColor: '#4CAF50',
-            wickDownColor: '#FF5252',
-            wickUpColor: '#4CAF50',
-        });
+	useEffect(() => {
+		if (!chartRef.current) return;
 
-        // Example data
-        candlestickSeries.setData([
-            { time: '2018-12-22', open: 75.16, high: 82.84, low: 36.16, close: 45.72 },
-            { time: '2018-12-23', open: 45.12, high: 53.90, low: 45.12, close: 48.09 },
-            { time: '2018-12-24', open: 60.71, high: 60.71, low: 53.39, close: 59.29 },
-            { time: '2018-12-25', open: 68.26, high: 68.26, low: 59.04, close: 60.50 },
-            { time: '2018-12-26', open: 67.71, high: 105.85, low: 66.67, close: 91.04 },
-        ]);
+		const chart = createChart(chartRef.current, {
+			width: chartRef.current.clientWidth,
+			height: 400,
+			layout: {
+				background: { color: '#1a1a1a' },
+				textColor: '#d1d5db',
+			},
+			grid: {
+				vertLines: { color: 'rgba(42, 46, 57, 0.5)' },
+				horzLines: { color: 'rgba(42, 46, 57, 0.5)' },
+			},
+			rightPriceScale: {
+				borderVisible: false,
+			},
+			timeScale: {
+				borderVisible: false,
+				timeVisible: true,
+				secondsVisible: false,
+			},
+			crosshair: {
+				vertLine: {
+					color: '#555',
+					width: 0.5,
+					style: 1,
+					visible: true,
+					labelVisible: true,
+				},
+				horzLine: {
+					color: '#555',
+					width: 0.5,
+					style: 1,
+					visible: true,
+					labelVisible: true,
+				},
+			},
+		});
 
-        chart.timeScale().fitContent();
-    }
+		const candlestickSeries = chart.addCandlestickSeries({
+			upColor: '#22c55e',
+			downColor: '#ef4444',
+			borderUpColor: '#22c55e',
+			borderDownColor: '#ef4444',
+			wickUpColor: '#22c55e',
+			wickDownColor: '#ef4444',
+		});
 
-    render() {
-        return <div ref={this.chartRef} />;
-    }
-}
+		if (data.length > 0) {
+			candlestickSeries.setData(data);
+			chart.timeScale().fitContent();
+		}
+
+		chartInstance.current = chart;
+
+		const handleResize = () => {
+			chart.applyOptions({
+				width: chartRef.current.clientWidth,
+			});
+		};
+
+		window.addEventListener('resize', handleResize);
+
+		return () => {
+			window.removeEventListener('resize', handleResize);
+			chart.remove();
+		};
+	}, [data]);
+
+	return (
+		<div className="bg-gray-900 rounded-lg p-4">
+			<h3 className="text-lg font-semibold text-gray-100 mb-4">{pair} Chart</h3>
+			<div
+				ref={chartRef}
+				className="w-full"
+			/>
+		</div>
+	);
+};
 
 export default TradingView;
